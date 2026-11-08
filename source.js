@@ -609,18 +609,21 @@ class NekoPost extends types.Source{
   const manga=SECTIONS[0];
   const feeds=[{id:"popular",title:"Manga • ยอดนิยม",mode:"popular"},{id:"latest",title:"Manga • อัปเดตล่าสุด",mode:"latest"},{id:"manga",title:"Manga • ทั้งหมด",mode:"search"},...SECTIONS.slice(1).map(x=>({id:x.id,title:x.title,mode:"search"}))];
   for(const feed of feeds){
-   const home=App.createHomeSection({id:feed.id,title:feed.title,type:"singleRowNormal",containsMoreItems:true,items:[]});callback(home);
    const section=SECTIONS.find(x=>x.id===feed.id)||manga;
    try{
     const items=feed.mode==="search"?await this.postSearch(section,"",1):await this.postFeatured(manga,feed.mode,1);
-    home.items=items;callback(home);
-   }catch(e){console.log("NekoPost "+feed.id+" failed: "+e)}
+    const tiles=items.map(item=>App.createMangaTile({id:item.mangaId,image:item.image,title:App.createIconText({text:item.title||"Untitled"})}));
+    callback(App.createHomeSection({id:feed.id,title:feed.title,type:"singleRowNormal",containsMoreItems:true,items:tiles}));
+   }catch(e){
+    console.log("NekoPost section "+feed.id+" error: "+String(e));
+    callback(App.createHomeSection({id:feed.id,title:feed.title+" (โหลดรายการไม่ได้)",type:"singleRowNormal",containsMoreItems:true,items:[]}));
+   }
   }
  }
  async getViewMoreItems(id,metadata){
   const page=Number(metadata?.page||1),section=SECTIONS.find(x=>x.id===id)||SECTIONS[0];
   const results=id==="popular"||id==="latest"?await this.postFeatured(SECTIONS[0],id,page):await this.postSearch(section,"",page);
-  return App.createPagedResults({results,metadata:results.length?{page:page+1}:undefined});
+  return App.createPagedResults({results:results.map(item=>App.createMangaTile({id:item.mangaId,image:item.image,title:App.createIconText({text:item.title||"Untitled"})})),metadata:results.length?{page:page+1}:undefined});
  }
  async getMangaDetails(mangaId){
   if(/^manga\/\d+$/.test(mangaId)){

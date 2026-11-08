@@ -1,13 +1,13 @@
 {
-  "buildTime": "2026-11-08T13:05:33.095893+00:00",
+  "buildTime": "2026-11-08T13:08:28.680322+00:00",
   "sources": [
     {
       "id": "NekoPost",
-      "name": "NekoPost Multi 0.3.6 (reference-based)",
+      "name": "NekoPost Multi 0.3.7 (home tiles)",
       "author": "Community development",
       "desc": "Independent NekoPost source, five sections. Dynamic readers require on-device testing.",
       "contentRating": "EVERYONE",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "icon": "icon.png",
       "tags": [],
       "websiteBaseURL": "https://www.nekopost.net",
