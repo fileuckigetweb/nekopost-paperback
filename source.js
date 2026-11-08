@@ -471,7 +471,7 @@ const SECTIONS=[
  {id:"ai_project",title:"AI Project • ทดลอง",path:"/ai_project",type:""}
 ];
 const excluded=/(?:hentai|smut|porn|nsfw|18\+|adult|explicit|เรท\s*18|ผู้ใหญ่เท่านั้น)/i;
-exports.NekoPostInfo={version:"0.3.1",name:"NekoPost Multi 0.3 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS};
+exports.NekoPostInfo={version:"0.3.2",name:"NekoPost Multi 0.3.2 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS};
 function absolute(s){if(!s)return "";s=String(s).trim();if(/^(data:|javascript:|#)/i.test(s))return "";if(/^https?:\/\//i.test(s))return s;if(s.startsWith("//"))return "https:"+s;return BASE+(s.startsWith("/")?s:"/"+s)}
 function identifier(url){return absolute(url).replace(/^https?:\/\/[^/]+/i,"").replace(/^\/+|\/+$/g,"")}
 function clean(s){return String(s||"").replace(/\s+/g," ").trim()}
@@ -498,6 +498,16 @@ function apiCover(item){
  const candidates=[item.coverUrl,item.coverURL,item.cover_url,item.coverImage,item.cover_image,item.coverPath,item.cover_path,item.coverFile,item.cover_file,item.cover,item.thumbnailUrl,item.thumbnailURL,item.thumbnail_url,item.thumbnail,item.thumb,item.imageUrl,item.imageURL,item.image_url,item.image,item.poster,item.picture,item.banner,item.projectCover,item.projectImage,item.projectImageUrl,item.projectThumbnail,item.project?.cover,item.project?.image,item.images?.cover,item.images?.thumbnail];
  for(const candidate of candidates){const u=coverUrl(candidate);if(u)return u}
  return "";
+}
+// NekoPost manga listing uses an external image host. When API responses
+// omit cover fields, derive the documented cover path from the manga ID.
+// Other categories keep their actual API/HTML covers; their URL patterns
+// have not been verified and must not be guessed.
+function knownMangaCover(id){
+ const match=String(id||"").match(/^manga\/(\d+)$/);
+ if(!match)return "";
+ const n=match[1];
+ return "https://www.osemocphoto.com/collectManga/"+n+"/"+n+"_cover.jpg";
 }
 function chapterNum(s){const m=String(s).match(/(?:chapter|chap|ch\.?|ตอนที่|ตอน)\s*([0-9]+(?:\.[0-9]+)?)/i);return m?parseFloat(m[1]):0}
 function kind(id){return String(id).split("/")[0]}
@@ -526,7 +536,7 @@ class NekoPost extends types.Source{
     const id=path?identifier(path):(id0!=null?section.id+"/"+id0:"");
     if(!id||seen[id]||!/^((manga|comic|novel|original_novel|ai_project)\/)/.test(id))continue;
     const title=clean(item.projectName||item.name||item.title||item.projectTitle||"");if(!title||excluded.test(title+" "+clean(item.genre)))continue;
-    const image=apiCover(item);seen[id]=true;
+    const image=apiCover(item)||knownMangaCover(id);seen[id]=true;
     results.push(App.createPartialSourceManga({mangaId:id,title,image,subtitle:undefined}));
   }return results;
  }
@@ -535,7 +545,7 @@ class NekoPost extends types.Source{
  if(section&&section.id!=="ai_project"&&kind(id)!==section.id)return;
  const container=a.closest("article,.card,.item,.book-item,.manga-item,.comic-item,.novel-item,.col,.col-md-3,.col-md-4,.col-6,li");const box=container.length?container:a;
  const title=clean(a.attr("title")||box.find(".title,.name,h2,h3,h4,h5,.card-title,.ms-card-title").first().text()||a.find("img").first().attr("alt")||a.text());
- if(!title||title.length>180||excluded.test(title))return;const image=imgUrl($,box)||imgUrl($,a);seen[id]=true;result.push(App.createPartialSourceManga({mangaId:id,title,image,subtitle:undefined}))});return result}
+ if(!title||title.length>180||excluded.test(title))return;const image=imgUrl($,a)||imgUrl($,box)||knownMangaCover(id);seen[id]=true;result.push(App.createPartialSourceManga({mangaId:id,title,image,subtitle:undefined}))});return result}
  async getSearchResults(query,metadata){const page=Number(metadata?.page||1),section=SECTIONS.find(x=>x.id===(metadata?.section||"manga"))||SECTIONS[0],term=clean(query?.title);
   let results=[];try{results=await this.postSearch(section,term,page)}catch(e){}
   if(!results.length){const url=term?BASE+section.path+"?q="+encodeURIComponent(term)+(page>1?"&page="+page:""):BASE+section.path+(page>1?"?page="+page:"");const $=await this.fetch(url);results=this.collect($,section)}
@@ -543,7 +553,7 @@ class NekoPost extends types.Source{
  }
  async getHomePageSections(callback){for(const section of SECTIONS){const home=App.createHomeSection({id:section.id,title:section.title,type:"singleRowNormal",containsMoreItems:true,items:[]});callback(home);try{const data=await this.getSearchResults({title:""},{page:1,section:section.id});home.items=data.results;callback(home)}catch(e){/* keep remaining sections visible */}}}
  async getViewMoreItems(id,metadata){if(!SECTIONS.some(x=>x.id===id))return App.createPagedResults({results:[]});return this.getSearchResults({title:""},{page:Number(metadata?.page||1),section:id})}
- async getMangaDetails(mangaId){const $=await this.fetch("/"+mangaId);const title=clean($("h1,.entry-title,.manga-title,.comic-title,.novel-title,.ms-card-title").first().text())||mangaId;const image=imgUrl($,$(".manga-detail,.comic-detail,.novel-detail,.detail,.container").first())||imgUrl($,$("body"));const desc=clean($(".description,.summary,.synopsis,.manga-description,.comic-description,.novel-description,.detail-description,.content-description,.project-description").first().text());return App.createSourceManga({id:mangaId,mangaInfo:App.createMangaInfo({titles:[title],image,status:"UNKNOWN",author:"",artist:"",desc,tags:[]})})}
+ async getMangaDetails(mangaId){const $=await this.fetch("/"+mangaId);const title=clean($("h1,.entry-title,.manga-title,.comic-title,.novel-title,.ms-card-title").first().text())||mangaId;const image=imgUrl($,$(".manga-detail,.comic-detail,.novel-detail,.detail,.container").first())||imgUrl($,$("body"))||knownMangaCover(mangaId);const desc=clean($(".description,.summary,.synopsis,.manga-description,.comic-description,.novel-description,.detail-description,.content-description,.project-description").first().text());return App.createSourceManga({id:mangaId,mangaInfo:App.createMangaInfo({titles:[title],image,status:"UNKNOWN",author:"",artist:"",desc,tags:[]})})}
  async getChapters(mangaId){const $=await this.fetch("/"+mangaId),out=[],seen={};$("a.chapter-link[href],a[href]").each((i,el)=>{const a=$(el),href=identifier(a.attr("href")||"");if(!href.startsWith(mangaId+"/")||href===mangaId||seen[href])return;const name=clean(a.find(".ms-card-title,.chapter-title,.title").first().text()||a.text()||a.attr("title"));if(!name)return;seen[href]=true;out.push(App.createChapter({id:href,chapNum:chapterNum(name)||out.length+1,langCode:"th",name}))});return out}
  async getChapterDetails(mangaId,chapterId){const $=await this.fetch("/"+chapterId),pages=[],seen={};
   if(/^(novel|original_novel)\//.test(mangaId)){

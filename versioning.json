@@ -3,11 +3,11 @@
   "sources": [
     {
       "id": "NekoPost",
-      "name": "NekoPost Multi 0.3 (test)",
+      "name": "NekoPost Multi 0.3.2 (test)",
       "author": "Community development",
       "desc": "Independent NekoPost source, five sections. Dynamic readers require on-device testing.",
       "contentRating": "EVERYONE",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "icon": "icon.png",
       "tags": [],
       "websiteBaseURL": "https://www.nekopost.net",

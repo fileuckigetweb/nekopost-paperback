@@ -1,1 +1,4 @@
-NekoPost Paperback V0.3.1 - cover URL extraction update. Keep repository separate from SodsaiMe. Cover fields are best-effort and require device verification.
+NekoPost Paperback 0.8 V0.3.2 — cover URL fallback for Manga only.
+Manga image pattern confirmed from supplied HTML: https://www.osemocphoto.com/collectManga/{id}/{id}_cover.jpg (actual image may use a ?ver query).
+Other categories use API/HTML image URLs. Not yet verified on-device.
+SodsaiMe repository is unchanged.
