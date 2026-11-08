@@ -1,5 +1,5 @@
 {
-  "buildTime": "2026-11-08T11:35:03.568821+00:00",
+  "buildTime": "2026-11-08T12:39:48.134795+00:00",
   "sources": [
     {
       "id": "NekoPost",
@@ -7,7 +7,7 @@
       "author": "Community development",
       "desc": "Independent NekoPost source, five sections. Dynamic readers require on-device testing.",
       "contentRating": "EVERYONE",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "icon": "icon.png",
       "tags": [],
       "websiteBaseURL": "https://www.nekopost.net",
