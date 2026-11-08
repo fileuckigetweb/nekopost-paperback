@@ -465,13 +465,13 @@ const types=require("@paperback/types");
 const BASE="https://www.nekopost.net";
 const SECTIONS=[
  {id:"manga",title:"Manga • ภาพ",path:"/manga",type:"m"},
- {id:"comic",title:"Comic • ภาพ",path:"/comic",type:"cd"},
+ {id:"comic",title:"Comic • ภาพ",path:"/comic",type:"c"},
  {id:"novel",title:"Novel • ข้อความ",path:"/novel",type:"n"},
  {id:"original_novel",title:"Original Novel • ข้อความ",path:"/original_novel",type:"f"},
  {id:"ai_project",title:"AI Project • ทดลอง",path:"/ai_project",type:""}
 ];
 const excluded=/(?:hentai|smut|porn|nsfw|18\+|adult|explicit|เรท\s*18|ผู้ใหญ่เท่านั้น)/i;
-exports.NekoPostInfo={version:"0.3.5",name:"NekoPost Multi 0.3.5 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS};
+exports.NekoPostInfo={version:"0.3.6",name:"NekoPost Multi 0.3.6 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS|types.SourceIntents.MANGA_SEARCH|types.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED};
 function absolute(s){if(!s)return "";s=String(s).trim();if(/^(data:|javascript:|#)/i.test(s))return "";if(/^https?:\/\//i.test(s))return s;if(s.startsWith("//"))return "https:"+s;return BASE+(s.startsWith("/")?s:"/"+s)}
 function identifier(url){return absolute(url).replace(/^https?:\/\/[^/]+/i,"").replace(/^\/+|\/+$/g,"")}
 function clean(s){return String(s||"").replace(/\s+/g," ").trim()}
@@ -520,40 +520,46 @@ function textPages(text){
  const pages=[];for(let i=0;i<lines.length;i+=24){const block=lines.slice(i,i+24);let svg='<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200" viewBox="0 0 800 1200"><rect width="800" height="1200" fill="#fffdf6"/>';block.forEach((line,j)=>{svg+='<text x="42" y="'+(75+j*44)+'" font-family="sans-serif" font-size="25" fill="#202020">'+escapeXML(line)+'</text>'});svg+='</svg>';pages.push('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg))}return pages;
 }
 class NekoPost extends types.Source{
- constructor(){super(...arguments);this.requestManager=App.createRequestManager({requestsPerSecond:1,requestTimeout:20000})}
+ constructor(){super(...arguments);this.requestManager=App.createRequestManager({requestsPerSecond:2,requestTimeout:20000})}
+ getCloudflareBypassRequest(){return App.createRequest({url:BASE+"/manga",method:"GET",headers:{referer:BASE+"/manga/","user-agent":"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile Safari/604.1"}})}
+ async getCloudflareBypassRequestAsync(){return this.getCloudflareBypassRequest()}
  async fetch(path){const request=App.createRequest({url:absolute(path),method:"GET"});const response=await this.requestManager.schedule(request,1);return this.cheerio.load(response.data||"")}
  // API may wrap results in data/result/payload; handle the shapes without guessing a single field.
  extractProjects(raw){
-  const found=[],visited=[];
-  const visit=(node,depth)=>{
-   if(!node||depth>7||typeof node!=="object"||visited.indexOf(node)>=0)return;
-   visited.push(node);
-   if(Array.isArray(node)){for(const v of node)visit(v,depth+1);return}
-   const id=node.pid||node.PID||node.projectId||node.ProjectID||node.projectID||node.project_id||node.id;
-   const name=node.projectName||node.ProjectName||node.projectTitle||node.project_name||node.name||node.title||node.chapterName||node.ChapterName;
-   if(id!=null&&name)found.push(node);
-   for(const key of ["data","result","results","payload","response","projects","projectList","project_list","list","items","content","records","rows","entries","page","pageData","searchResult","searchResults","listProject","listChapter","projectInfo"]){if(node[key]!=null)visit(node[key],depth+1)}
-  };visit(raw,0);return found;
+  const seen=[],out=[];
+  const walk=(obj,depth)=>{
+   if(!obj||depth>6||typeof obj!=="object"||seen.indexOf(obj)>=0)return;
+   seen.push(obj);
+   if(Array.isArray(obj)){for(const item of obj)walk(item,depth+1);return}
+   const pid=obj.pid??obj.projectId??obj.PID??obj.ProjectID;
+   if(pid!=null&&(obj.projectName||obj.ProjectName||obj.chapterNo||obj.coverVersion))out.push(obj);
+   for(const k of ["listProject","listChapter","data","result","payload","projects","items","records","projectInfo"]){if(obj[k]!=null)walk(obj[k],depth+1)}
+  };walk(raw,0);return out;
  }
  mapProjects(items,section){
   const out=[],seen={};
   for(const item of items){
-   const id0=item.pid||item.PID||item.projectId||item.ProjectID||item.projectID||item.project_id||item.id;
-   let link=item.url||item.link||item.href||item.projectUrl||"";
-   let id=link?identifier(link):"";
-   if(!/^(manga|comic|novel|original_novel|ai_project)\/[^/]+$/.test(id))id=section.id+"/"+id0;
-   if(id0==null&&!link||seen[id])continue;
-   const title=clean(item.projectName||item.ProjectName||item.projectTitle||item.project_name||item.name||item.title||item.chapterName||item.ChapterName);
-   if(!title||excluded.test(title+" "+clean(item.genre)))continue;
-   const image=apiCover(item)||(section.id==="manga"?knownMangaCover(id)+(item.coverVersion?"?ver="+encodeURIComponent(item.coverVersion):""):"");
-   seen[id]=true;out.push(App.createPartialSourceManga({mangaId:id,title,image,subtitle:undefined}));
+   const pid=item.pid??item.projectId??item.PID??item.ProjectID;
+   if(pid==null||seen[String(pid)])continue;
+   seen[String(pid)]=true;
+   const title=clean(item.projectName||item.ProjectName||item.projectTitle||item.name||("Project "+pid));
+   if(excluded.test(title+" "+clean(item.genre)))continue;
+   const id=section.id+"/"+pid;
+   const n=Number(pid);
+   const cdn=n>17500?"https://fs.osemocphoto.com/collectManga/":"https://www.osemocphoto.com/collectManga/";
+   const cover=apiCover(item)||(cdn+pid+"/"+pid+"_cover.jpg"+(item.coverVersion?"?ver="+encodeURIComponent(item.coverVersion):""));
+   out.push(App.createPartialSourceManga({mangaId:id,title,image:cover,subtitle:undefined}));
   }return out;
  }
  async postApi(endpoint,payload){
-  const req=App.createRequest({url:BASE+endpoint,method:"POST",headers:{"content-type":"application/json","accept":"application/json","referer":BASE+"/manga"},data:JSON.stringify(payload)});
-  const res=await this.requestManager.schedule(req,1);let raw=res.data;
-  if(typeof raw==="string")raw=JSON.parse(raw);
-  if(raw?.success===false||raw?.error)throw new Error("NekoPost API: "+JSON.stringify(raw.error||raw.message||raw).slice(0,180));
+  const req=App.createRequest({url:BASE+endpoint,method:"POST",headers:{"content-type":"application/json","accept":"application/json","referer":BASE+"/manga/","origin":BASE},data:JSON.stringify(payload)});
+  const res=await this.requestManager.schedule(req,1);
+  let raw=res.data;
+  if(typeof raw==="string"){
+   if(/^\s*</.test(raw))throw new Error("API returned HTML (website protection or endpoint unavailable): "+endpoint);
+   try{raw=JSON.parse(raw)}catch(e){throw new Error("Invalid JSON at "+endpoint+": "+String(raw).slice(0,100))}
+  }
+  if(raw?.success===false||raw?.error)throw new Error("API "+endpoint+": "+JSON.stringify(raw.error||raw.message||raw).slice(0,140));
   return raw;
  }
  async postSearch(section,keyword,page){
