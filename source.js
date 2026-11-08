@@ -471,7 +471,7 @@ const SECTIONS=[
  {id:"ai_project",title:"AI Project • ทดลอง",path:"/ai_project",type:""}
 ];
 const excluded=/(?:hentai|smut|porn|nsfw|18\+|adult|explicit|เรท\s*18|ผู้ใหญ่เท่านั้น)/i;
-exports.NekoPostInfo={version:"0.3.3",name:"NekoPost Multi 0.3.3 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS};
+exports.NekoPostInfo={version:"0.3.4",name:"NekoPost Multi 0.3.4 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS};
 function absolute(s){if(!s)return "";s=String(s).trim();if(/^(data:|javascript:|#)/i.test(s))return "";if(/^https?:\/\//i.test(s))return s;if(s.startsWith("//"))return "https:"+s;return BASE+(s.startsWith("/")?s:"/"+s)}
 function identifier(url){return absolute(url).replace(/^https?:\/\/[^/]+/i,"").replace(/^\/+|\/+$/g,"")}
 function clean(s){return String(s||"").replace(/\s+/g," ").trim()}
@@ -507,7 +507,8 @@ function knownMangaCover(id){
  const match=String(id||"").match(/^manga\/(\d+)$/);
  if(!match)return "";
  const n=match[1];
- return "https://www.osemocphoto.com/collectManga/"+n+"/"+n+"_cover.jpg";
+ const host=Number(n)>17500?"https://fs.osemocphoto.com/collectManga/":"https://www.osemocphoto.com/collectManga/";
+ return host+n+"/"+n+"_cover.jpg";
 }
 function chapterNum(s){const m=String(s).match(/(?:chapter|chap|ch\.?|ตอนที่|ตอน)\s*([0-9]+(?:\.[0-9]+)?)/i);return m?parseFloat(m[1]):0}
 function kind(id){return String(id).split("/")[0]}
@@ -528,31 +529,44 @@ class NekoPost extends types.Source{
    if(!node||depth>7||typeof node!=="object"||visited.indexOf(node)>=0)return;
    visited.push(node);
    if(Array.isArray(node)){for(const v of node)visit(v,depth+1);return}
-   const id=node.projectId||node.projectID||node.project_id||node.pid||node.id;
+   const id=node.pid||node.projectId||node.projectID||node.project_id||node.id;
    const name=node.projectName||node.projectTitle||node.project_name||node.name||node.title;
    if(id!=null&&name)found.push(node);
-   for(const key of ["data","result","results","payload","response","projects","projectList","project_list","list","items","content","records","rows","entries","page","pageData","searchResult","searchResults"]){if(node[key]!=null)visit(node[key],depth+1)}
+   for(const key of ["data","result","results","payload","response","projects","projectList","project_list","list","items","content","records","rows","entries","page","pageData","searchResult","searchResults","listProject","listChapter","projectInfo"]){if(node[key]!=null)visit(node[key],depth+1)}
   };visit(raw,0);return found;
  }
  mapProjects(items,section){
   const out=[],seen={};
   for(const item of items){
-   const id0=item.projectId||item.projectID||item.project_id||item.pid||item.id;
+   const id0=item.pid||item.projectId||item.projectID||item.project_id||item.id;
    let link=item.url||item.link||item.href||item.projectUrl||"";
    let id=link?identifier(link):"";
    if(!/^(manga|comic|novel|original_novel|ai_project)\/[^/]+$/.test(id))id=section.id+"/"+id0;
    if(id0==null&&!link||seen[id])continue;
    const title=clean(item.projectName||item.projectTitle||item.project_name||item.name||item.title);
    if(!title||excluded.test(title+" "+clean(item.genre)))continue;
-   const image=apiCover(item)||knownMangaCover(id);
+   const image=apiCover(item)||(section.id==="manga"?knownMangaCover(id)+(item.coverVersion?"?ver="+encodeURIComponent(item.coverVersion):""):"");
    seen[id]=true;out.push(App.createPartialSourceManga({mangaId:id,title,image,subtitle:undefined}));
   }return out;
  }
- async postSearch(section,keyword,page){
-  const payload={keyword:keyword||"",projectType:section.type,genre:[],status:"",orderBy:"updateDate",pageNo:page,pageSize:20};
-  const req=App.createRequest({url:BASE+"/api/project/search",method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json","Origin":BASE,"Referer":BASE+section.path},data:JSON.stringify(payload)});
+ async postApi(endpoint,payload){
+  const req=App.createRequest({url:BASE+endpoint,method:"POST",headers:{"content-type":"application/json","accept":"application/json","referer":BASE+"/manga"},data:JSON.stringify(payload)});
   const res=await this.requestManager.schedule(req,1);let raw=res.data;
   if(typeof raw==="string")raw=JSON.parse(raw);
+  if(raw?.success===false||raw?.error)throw new Error("NekoPost API: "+JSON.stringify(raw.error||raw.message||raw).slice(0,180));
+  return raw;
+ }
+ async postSearch(section,keyword,page){
+  // Confirmed payload shape from a working NekoPost Paperback implementation.
+  // The manga catalog omits projectType; other category types are not verified.
+  const payload={keyword:keyword||"",genre:[],status:0,specialType:[],orderBy:"latest",paging:{pageNo:page,pageSize:30}};
+  if(section.id!=="manga"&&section.type)payload.type=section.type;
+  const raw=await this.postApi("/api/project/search",payload);
+  return this.mapProjects(this.extractProjects(raw),section);
+ }
+ async postFeatured(section,mode,page){
+  const endpoint=mode==="latest"?"/api/project/latest":"/api/project/list/popular";
+  const raw=await this.postApi(endpoint,{type:section.type||"m",paging:{pageNo:page,pageSize:mode==="latest"?50:20}});
   return this.mapProjects(this.extractProjects(raw),section);
  }
  collect($,section){
@@ -582,15 +596,45 @@ class NekoPost extends types.Source{
   return App.createPagedResults({results,metadata:results.length?{page:page+1,section:section.id}:undefined});
  }
  async getHomePageSections(callback){
-  for(const section of SECTIONS){
-   const home=App.createHomeSection({id:section.id,title:section.title,type:"singleRowNormal",containsMoreItems:true,items:[]});callback(home);
-   try{const data=await this.getSearchResults({title:""},{page:1,section:section.id});home.items=data.results;callback(home)}catch(e){/* leave heading, use View More to expose request error */}
+  const manga=SECTIONS[0];
+  const feeds=[{id:"popular",title:"Manga • ยอดนิยม",mode:"popular"},{id:"latest",title:"Manga • อัปเดตล่าสุด",mode:"latest"},{id:"manga",title:"Manga • ทั้งหมด",mode:"search"},...SECTIONS.slice(1).map(x=>({id:x.id,title:x.title,mode:"search"}))];
+  for(const feed of feeds){
+   const home=App.createHomeSection({id:feed.id,title:feed.title,type:"singleRowNormal",containsMoreItems:true,items:[]});callback(home);
+   const section=SECTIONS.find(x=>x.id===feed.id)||manga;
+   try{
+    const items=feed.mode==="search"?await this.postSearch(section,"",1):await this.postFeatured(manga,feed.mode,1);
+    home.items=items;callback(home);
+   }catch(e){console.log("NekoPost "+feed.id+" failed: "+e)}
   }
  }
- async getViewMoreItems(id,metadata){if(!SECTIONS.some(x=>x.id===id))return App.createPagedResults({results:[]});return this.getSearchResults({title:""},{page:Number(metadata?.page||1),section:id})}
- async getMangaDetails(mangaId){const $=await this.fetch("/"+mangaId);const title=clean($("h1,.entry-title,.manga-title,.comic-title,.novel-title,.ms-card-title").first().text())||mangaId;const image=imgUrl($,$(".manga-detail,.comic-detail,.novel-detail,.detail,.container").first())||imgUrl($,$("body"))||knownMangaCover(mangaId);const desc=clean($(".description,.summary,.synopsis,.manga-description,.comic-description,.novel-description,.detail-description,.content-description,.project-description").first().text());return App.createSourceManga({id:mangaId,mangaInfo:App.createMangaInfo({titles:[title],image,status:"UNKNOWN",author:"",artist:"",desc,tags:[]})})}
- async getChapters(mangaId){const $=await this.fetch("/"+mangaId),out=[],seen={};$("a.chapter-link[href],a[href]").each((i,el)=>{const a=$(el),href=identifier(a.attr("href")||"");if(!href.startsWith(mangaId+"/")||href===mangaId||seen[href])return;const name=clean(a.find(".ms-card-title,.chapter-title,.title").first().text()||a.text()||a.attr("title"));if(!name)return;seen[href]=true;out.push(App.createChapter({id:href,chapNum:chapterNum(name)||out.length+1,langCode:"th",name}))});return out}
- async getChapterDetails(mangaId,chapterId){const $=await this.fetch("/"+chapterId),pages=[],seen={};
+ async getViewMoreItems(id,metadata){
+  const page=Number(metadata?.page||1),section=SECTIONS.find(x=>x.id===id)||SECTIONS[0];
+  const results=id==="popular"||id==="latest"?await this.postFeatured(SECTIONS[0],id,page):await this.postSearch(section,"",page);
+  return App.createPagedResults({results,metadata:results.length?{page:page+1}:undefined});
+ }
+ async getMangaDetails(mangaId){
+  if(/^manga\/\d+$/.test(mangaId)){
+   const pid=Number(mangaId.split("/")[1]),data=await this.postApi("/api/project/detail2",{pid});
+   const project=data?.projectInfo?.Project||{};
+   const title=clean(project.projectName)||"Project "+pid;
+   const image=apiCover(project)||knownMangaCover(mangaId)+(project.coverVersion?"?ver="+project.coverVersion:"");
+   const status=project.status===1?"ONGOING":"COMPLETED";
+   return App.createSourceManga({id:mangaId,mangaInfo:App.createMangaInfo({titles:[title],image,status,author:clean(project.authorName),artist:clean(project.artistName),desc:clean(project.info),tags:[]})});
+  }
+  const $=await this.fetch("/"+mangaId);const title=clean($("h1,.entry-title,.manga-title,.comic-title,.novel-title,.ms-card-title").first().text())||mangaId;const image=imgUrl($,$("body"));return App.createSourceManga({id:mangaId,mangaInfo:App.createMangaInfo({titles:[title],image,status:"UNKNOWN",desc:"",tags:[]})});
+ }
+ async getChapters(mangaId){
+  if(/^manga\/\d+$/.test(mangaId)){
+   const pid=Number(mangaId.split("/")[1]),data=await this.postApi("/api/project/detail2",{pid});
+   const items=data?.projectInfo?.ListChapter||[];
+   return items.filter(x=>x.ChapterID||x.chapterId||x.id).map((x,i)=>{
+    const n=parseFloat(x.ChapterNo||x.chapterNo||i+1);
+    return App.createChapter({id:String(x.ChapterID||x.chapterId||x.id),chapNum:Number.isFinite(n)?n:i+1,name:clean(x.ChapterName||x.chapterName)||"ตอนที่ "+(Number.isFinite(n)?n:i+1),langCode:"th"});
+   });
+  }
+  const $=await this.fetch("/"+mangaId),out=[],seen={};$("a.chapter-link[href],a[href]").each((i,el)=>{const a=$(el),href=identifier(a.attr("href")||"");if(!href.startsWith(mangaId+"/")||href===mangaId||seen[href])return;const name=clean(a.text());if(!name)return;seen[href]=true;out.push(App.createChapter({id:href,chapNum:chapterNum(name)||out.length+1,langCode:"th",name}))});return out;
+ }
+ async getChapterDetails(mangaId,chapterId){if(/^manga\/\d+$/.test(mangaId))throw new Error("NekoPost chapter: /handler/cinfo uses AES encryption; image decryption is not implemented in V0.3.4");const $=await this.fetch("/"+chapterId),pages=[],seen={};
   if(/^(novel|original_novel)\//.test(mangaId)){
     const reader=$(".novel-content,.novel-reader,.chapter-content,.reading-content,.reader-content,.novel-text,.text-content,.chapter-body,.reading-area").first();const content=reader.length?reader.text():"";
     if(!clean(content))throw new Error("NekoPost: novel text is loaded dynamically; Paperback 0.8 cannot render this chapter yet");
