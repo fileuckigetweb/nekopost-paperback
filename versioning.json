@@ -1,1 +1,21 @@
-{"buildTime": "2026-11-08T12:52:05.028104+00:00", "sources": [{"id": "NekoPost", "name": "NekoPost Multi 0.3.4 (test)", "author": "Community development", "desc": "Independent NekoPost source, five sections. Dynamic readers require on-device testing.", "contentRating": "EVERYONE", "version": "0.3.4", "icon": "icon.png", "tags": [], "websiteBaseURL": "https://www.nekopost.net", "intents": 5}], "builtWith": {"toolchain": "0.8.7", "types": "0.8.7"}}
+{
+  "buildTime": "2026-11-08T12:58:12.282973+00:00",
+  "sources": [
+    {
+      "id": "NekoPost",
+      "name": "NekoPost Multi 0.3.5 (test)",
+      "author": "Community development",
+      "desc": "Independent NekoPost source, five sections. Dynamic readers require on-device testing.",
+      "contentRating": "EVERYONE",
+      "version": "0.3.5",
+      "icon": "icon.png",
+      "tags": [],
+      "websiteBaseURL": "https://www.nekopost.net",
+      "intents": 5
+    }
+  ],
+  "builtWith": {
+    "toolchain": "0.8.7",
+    "types": "0.8.7"
+  }
+}

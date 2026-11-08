@@ -471,7 +471,7 @@ const SECTIONS=[
  {id:"ai_project",title:"AI Project • ทดลอง",path:"/ai_project",type:""}
 ];
 const excluded=/(?:hentai|smut|porn|nsfw|18\+|adult|explicit|เรท\s*18|ผู้ใหญ่เท่านั้น)/i;
-exports.NekoPostInfo={version:"0.3.4",name:"NekoPost Multi 0.3.4 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS};
+exports.NekoPostInfo={version:"0.3.5",name:"NekoPost Multi 0.3.5 (test)",icon:"icon.png",author:"Community development",description:"Five categories with corrected NekoPost routing; reader compatibility under test.",contentRating:types.ContentRating.EVERYONE,websiteBaseURL:BASE,intents:types.SourceIntents.MANGA_CHAPTERS|types.SourceIntents.HOMEPAGE_SECTIONS};
 function absolute(s){if(!s)return "";s=String(s).trim();if(/^(data:|javascript:|#)/i.test(s))return "";if(/^https?:\/\//i.test(s))return s;if(s.startsWith("//"))return "https:"+s;return BASE+(s.startsWith("/")?s:"/"+s)}
 function identifier(url){return absolute(url).replace(/^https?:\/\/[^/]+/i,"").replace(/^\/+|\/+$/g,"")}
 function clean(s){return String(s||"").replace(/\s+/g," ").trim()}
@@ -529,8 +529,8 @@ class NekoPost extends types.Source{
    if(!node||depth>7||typeof node!=="object"||visited.indexOf(node)>=0)return;
    visited.push(node);
    if(Array.isArray(node)){for(const v of node)visit(v,depth+1);return}
-   const id=node.pid||node.projectId||node.projectID||node.project_id||node.id;
-   const name=node.projectName||node.projectTitle||node.project_name||node.name||node.title;
+   const id=node.pid||node.PID||node.projectId||node.ProjectID||node.projectID||node.project_id||node.id;
+   const name=node.projectName||node.ProjectName||node.projectTitle||node.project_name||node.name||node.title||node.chapterName||node.ChapterName;
    if(id!=null&&name)found.push(node);
    for(const key of ["data","result","results","payload","response","projects","projectList","project_list","list","items","content","records","rows","entries","page","pageData","searchResult","searchResults","listProject","listChapter","projectInfo"]){if(node[key]!=null)visit(node[key],depth+1)}
   };visit(raw,0);return found;
@@ -538,12 +538,12 @@ class NekoPost extends types.Source{
  mapProjects(items,section){
   const out=[],seen={};
   for(const item of items){
-   const id0=item.pid||item.projectId||item.projectID||item.project_id||item.id;
+   const id0=item.pid||item.PID||item.projectId||item.ProjectID||item.projectID||item.project_id||item.id;
    let link=item.url||item.link||item.href||item.projectUrl||"";
    let id=link?identifier(link):"";
    if(!/^(manga|comic|novel|original_novel|ai_project)\/[^/]+$/.test(id))id=section.id+"/"+id0;
    if(id0==null&&!link||seen[id])continue;
-   const title=clean(item.projectName||item.projectTitle||item.project_name||item.name||item.title);
+   const title=clean(item.projectName||item.ProjectName||item.projectTitle||item.project_name||item.name||item.title||item.chapterName||item.ChapterName);
    if(!title||excluded.test(title+" "+clean(item.genre)))continue;
    const image=apiCover(item)||(section.id==="manga"?knownMangaCover(id)+(item.coverVersion?"?ver="+encodeURIComponent(item.coverVersion):""):"");
    seen[id]=true;out.push(App.createPartialSourceManga({mangaId:id,title,image,subtitle:undefined}));
@@ -562,12 +562,16 @@ class NekoPost extends types.Source{
   const payload={keyword:keyword||"",genre:[],status:0,specialType:[],orderBy:"latest",paging:{pageNo:page,pageSize:30}};
   if(section.id!=="manga"&&section.type)payload.type=section.type;
   const raw=await this.postApi("/api/project/search",payload);
-  return this.mapProjects(this.extractProjects(raw),section);
+  const items=this.mapProjects(Array.isArray(raw?.listProject)?raw.listProject:this.extractProjects(raw),section);
+  if(!items.length&&page===1)throw new Error("Empty /project/search; response keys: "+Object.keys(raw||{}).join(","));
+  return items;
  }
  async postFeatured(section,mode,page){
   const endpoint=mode==="latest"?"/api/project/latest":"/api/project/list/popular";
   const raw=await this.postApi(endpoint,{type:section.type||"m",paging:{pageNo:page,pageSize:mode==="latest"?50:20}});
-  return this.mapProjects(this.extractProjects(raw),section);
+  const items=this.mapProjects(Array.isArray(raw?.listChapter)?raw.listChapter:Array.isArray(raw?.listProject)?raw.listProject:this.extractProjects(raw),section);
+  if(!items.length&&page===1)throw new Error("Empty "+endpoint+"; response keys: "+Object.keys(raw||{}).join(","));
+  return items;
  }
  collect($,section){
   const result=[],seen={};

@@ -1,3 +1,3 @@
-NekoPost Paperback 0.3.4
-
-Uses the API request shapes supplied from a working source: /project/search, /project/latest, /project/list/popular, /project/detail2. Supports manga listing, cover URLs, details and chapters. Chapter reading AES /handler/cinfo is not implemented; other categories remain experimental. No SodsaiMe files.
+NekoPost V0.3.5: fixes API result extraction and reports explicit errors in View More.
+If No Items persists, record the exact error message; requests could be blocked or API response format could differ.
+This build is not verified on device. SodsaiMe is separate.
